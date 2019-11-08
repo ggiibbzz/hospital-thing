@@ -1,0 +1,18 @@
+The code is an implementation for an MDP.
+Which means we will have states, actions, cost/reward- and probability functions.
+
+Since this is a model for hospital admissions, we will work with states of how many people are in each hospital specialty at each period in time. 
+The actions will represent how many people will be added to what treatment pattern for each hospital specialty in the next time period.
+
+The action will have no influence whatsoever on the transition of a patient from one treatment pattern to another.
+It will only affect the effective admission into a specialty of the hospital, and not even the specific treatment pattern.
+
+Something that does take care of that is the transition probability.
+
+So what will we effectively input into our program?
+-We will need to know what the maximum ADMISSION capacity per specialty is
+-We need to ask for the available capacity per period
+-The average resource utilization per treatment pattern
+
+What should we consider doing for the classes?
+-A parent class of specialties, from which each specialty will inherit.
