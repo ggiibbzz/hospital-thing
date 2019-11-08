@@ -10,9 +10,25 @@ It will only affect the effective admission into a specialty of the hospital, an
 Something that does take care of that is the transition probability.
 
 So what will we effectively input into our program?
--We will need to know what the maximum ADMISSION capacity per specialty is
--We need to ask for the available capacity per period
--The average resource utilization per treatment pattern
+a -We will need to know what the maximum ADMISSION capacity per specialty is
+b -We need to ask for the available capacity per period
+c -The average resource utilization per treatment pattern
+d -Desired utilization levels
+e -Cost for deviation of desired utilization level
+f -Transition probabilities for each two treatment patterns in each specialty
+g -Entering probabilities for each specialty and each treatment pattern
+
+Okay, so what do we want to see back?
+1 -The expected number of admissions per period
+2 -The expected number of patients served per period
+3 -Expected average resource utilization per period
+4 -Expected cost per period
+
+How do we calculate each output?
+-2 and 3 can be calculated using steady state probabilities
+For that we need P^pi, which represents the transition probability matrix determined by stationary policy pi
+However we can only create that P^pi matrix if we can figure out what the heck the convolution of multinomial distributions
+are TRYING TO TELL US!!!!
 
 What should we consider doing for the classes?
--A parent class of specialties, from which each specialty will inherit.
+
