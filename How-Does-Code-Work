@@ -9,6 +9,7 @@ It will only affect the effective admission into a specialty of the hospital, an
 
 Something that does take care of that is the transition probability.
 
+%%%%
 So what will we effectively input into our program?
 a -We will need to know what the maximum ADMISSION capacity per specialty is
 b -We need to ask for the available capacity per period
@@ -25,10 +26,14 @@ Okay, so what do we want to see back?
 4 -Expected cost per period
 
 How do we calculate each output?
+-1 Not sure, we'll see once we implement it. My guess is just the average of the sum of every admission in every action in the image of the optimal policy.
 -2 and 3 can be calculated using steady state probabilities
 For that we need P^pi, which represents the transition probability matrix determined by stationary policy pi
 However we can only create that P^pi matrix if we can figure out what the heck the convolution of multinomial distributions
 are TRYING TO TELL US!!!!
+-4 Obviously we can get this with the expected cost function
 
+In all cases we will need to have the transition probability matrix.
+%%%%%
 What should we consider doing for the classes?
 
