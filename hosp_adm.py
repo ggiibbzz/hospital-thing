@@ -19,6 +19,7 @@ class Patterns:
     def __init__(self, num_patterns):
         ##How many treatment patterns are there
         self.amount = num_patterns
+        self.statespace = []
 
 
 
@@ -28,17 +29,17 @@ class Specialties:
         self.amount = num_sp
         ## Maximum admissions per period
         self.max = max_spec
-        self.statespace = []
-        self.__StateSpace(num_sp, max_spec)
+        self.actions = []
+        self.__Actions(num_sp, max_spec)
 
-    def StateSpace(self, amount, max):
+    def Actions(self, amount, max):
         B=[]
         for i in range(len(max)):
             B.append([*range(max[i]+1)])
         A = itertools.product(*B)
         for action in A:
-            self.statespace.append(list(action))
-    __StateSpace = StateSpace
+            self.actions.append(list(action))
+    __Actions = Actions
 
 ##Number of specialties d
 d= 2
@@ -53,6 +54,7 @@ max_L = np.array([5,5])
 ## Number of treatment patterns
 n=3
 ## avg resource utilization per period
+## avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
 avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
 ## Utilization cap
 cap_L = np.array([4,4])
@@ -71,4 +73,6 @@ enter_probs = np.array([[0.5,0.5,0.0],[0.4,0.6,0.0]])
 L = Resources(num_res, max_L, avg_ut, cap_L, cap_cost)
 E = Patterns(n)
 S = Specialties(d, max_S)
-print(S.statespace)
+
+def calc_prob(state2, state1, action):
+    for i in range(max(0,state2[0][0]-(sum(state1[0][0:2]))),min(state2[0][0],action[0])):
