@@ -1,18 +1,17 @@
 import numpy as np
 import itertools
+class Hoi:
+    def __init__(self, geel):
+        Hoi.geel = geel
 
-state2=[2,3,2]
-state1=[3,3,5]
-actionnr = 3
-B=[]
-C=[]
-for i in range(len(state2)-1):
-    B.append([*range(state2[i]+1)])
-A = itertools.product(*B)
-for action in A:
-    action = list(action)+[0]
-    if sum(action)== actionnr:
-        C.append(action)
+def IsGeel(kleur):
+    if kleur == hoi.geel:
+        True
     else:
-        pass
-print(C)
+        False
+def main():
+    yellow = 'geel'
+    hoi = Hoi(yellow)
+    nietyellow= 'rood'
+    IsGeel(nietyellow)
+main()
