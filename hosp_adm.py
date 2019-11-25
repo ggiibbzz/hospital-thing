@@ -125,15 +125,18 @@ class Resources:
 
     def isOverUt(self, state):
         ##We have to group all the treatment patterns together
-        ## self.avgMatrix[0] has length n-1 so len(self.avgMatrix[0])+1 = n
+        ## len(self.avgMatrix[0]) = n
         n= len(self.avgMatrix[0])+1
         for res_ind in range(self.amount):
-            sum = 0
+            som = 0
             for i in range(len(self.avgMatrix[0])):
-                for j in range(len(state)//(n)):
+                P=0
+                for d in range(len(state)//(n)):
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
-                    sum+=(state[i+j*n]*self.avgMatrix[res_ind][i])
-            if sum > self.max[res_ind]*bandwidth:
+                    for l in range(len(self.avgMatrix[0])):
+                        P += (state[i+d*n]*trans_probs[d][l][i])
+                som += P*self.avgMatrix[res_ind][i]
+            if som > self.max[res_ind]*bandwidth:
                 return True
             else:
                 pass
@@ -168,7 +171,7 @@ class Specialties:
     __Actions = Actions
 
 
-def actionSpace(statelist, L, S):
+def actionChecker(statelist, L, S):
     ##number of treatment patterns in a specialty
     n = int(len(statelist[0])/S.amount)
     ##All possible admission distributions given a state
@@ -217,40 +220,55 @@ def actionSpace(statelist, L, S):
                     staat = staat.tolist()
                     if L.isOverUt(staat) == False and distrs[j] != [0]*S.amount*n:
                         allpossacts.append(tuple(action))
-                        allpossactsdistrs.append(tuple(distrs[j]))
+                        allpossactsdistrs.append(tuple(staat))
         allpossacts.append((0,)*S.amount)
-        allpossactsdistrs.append((0,)*S.amount*n)
-        allpossactsnodupes = list(dict.fromkeys(allpossacts))
-        allpossactsdistrsnodupes = list(dict.fromkeys(allpossactsdistrs))
-        statewithactionstates.append([state, tuple(allpossactsnodupes)])
-        statewithactiondistrs.append([state, tuple(allpossactsdistrsnodupes)])
 
-    return [statewithactionstates, statewithactiondistrs]
-def stateSpace(L, E, S):
-    ##Find maximum amount of people in a single treatment pattern
-    max_ut = max(L.max)
-    min_avg_ut = max(L.max)
-    for i in range(len(L.avgMatrix)):
-        if min(L.avgMatrix[i])<min_avg_ut:
-            min_avg_ut = min(L.avgMatrix[i])
-    ##max_ut//min_avg_ut will be an upper bound
-    N=max_ut//min_avg_ut
-    N=N*bandwidth
-    B = [*range(int(N))]
-    A = itertools.product(B, repeat= E.amount-1)
-    C=[]
-    for semistate in A:
-        semistate = list(semistate)+[0]
-        C.append(semistate)
-    D = itertools.product(C, repeat= S.amount)
-    statespace = []
-    for state in D:
-        staat=[]
-        for i in range(len(state)):
-            staat = staat+state[i]
-        if L.isOverUt(list(staat)) == False:
-            statespace.append(staat)
-    return statespace
+        ##Maybe functionality that we'll want later
+        # allpossactsdistrs.append((0,)*S.amount*n)
+
+
+        allpossactsnodupes = list(dict.fromkeys(allpossacts))
+
+
+        allpossactsdistrsnodupes = tuple(dict.fromkeys(allpossactsdistrs))
+
+
+        statewithactionstates.append([state, tuple(allpossactsnodupes)])
+
+
+        statewithactiondistrs.append([state, tuple(allpossactsdistrsnodupes)])
+    allpossibleactions = ()
+    for i in range(len(statewithactionstates)):
+        allpossibleactions = allpossibleactions+ statewithactionstates[i][1]
+    allpossibleactions = tuple(dict.fromkeys(allpossibleactions))
+    return allpossibleactions, allpossactsdistrsnodupes
+
+#### Discontinued code for statespace
+# def stateSpace(L, E, S):
+#     ##Find maximum amount of people in a single treatment pattern
+#     max_ut = max(L.max)
+#     min_avg_ut = max(L.max)
+#     for i in range(len(L.avgMatrix)):
+#         if min(L.avgMatrix[i])<min_avg_ut:
+#             min_avg_ut = min(L.avgMatrix[i])
+#     ##max_ut//min_avg_ut will be an upper bound
+#     N=max_ut//min_avg_ut
+#     N=N*bandwidth
+#     B = [*range(int(N))]
+#     A = itertools.product(B, repeat= E.amount-1)
+#     C=[]
+#     for semistate in A:
+#         semistate = list(semistate)+[0]
+#         C.append(semistate)
+#     D = itertools.product(C, repeat= S.amount)
+#     statespace = []
+#     for state in D:
+#         staat=[]
+#         for i in range(len(state)):
+#             staat = staat+state[i]
+#         if L.isOverUt(list(staat)) == False:
+#             statespace.append(staat)
+#     return statespace
 
 def outputFile(lijst, name):
     f = open(name+'.txt', "w+")
@@ -302,6 +320,67 @@ def costFunction(state, action, actiondistributions, L):
         totaalsom+=P*som
     return totaalsom
 
+def transitioner(state, E, S):
+    n = E.amount
+    d = S.amount
+    possibletransitions = []
+    for specialty in range(d):
+        #State new looks at only one specialty
+        state_specialty = state[n*specialty:n*(specialty+1)]
+        trans_per_trans_i = []
+        for treatment in range(n-1):
+            ##i stands for how many patients we leave in E_treatment
+            trans_i = []
+            for i in range(state_specialty[treatment] + 1):
+                lst = [[state_specialty[treatment]-i-sum(p)] + p for p in partition(state_specialty[treatment]-i, n - 2)]
+                lst2=[]
+                for lijst in lst:
+                    lijst = lijst[0:treatment] + [i] + lijst[treatment:]
+                    lst2.append(lijst)
+                trans_i = trans_i+lst2
+            trans_per_trans_i.append(trans_i)
+        poss_combs_of_transitions_tuples = itertools.product(*trans_per_trans_i)
+        poss_combs_of_transitions = []
+        for comb in poss_combs_of_transitions_tuples:
+            sumarray = np.array([0]*n)
+            for treatment in range(n-1):
+                sumarray = sumarray + np.array(comb[treatment])
+                sumarray = sumarray.tolist()
+            poss_combs_of_transitions.append(sumarray)
+        ##Start gluing the specialties together
+        possibletransitions.append(poss_combs_of_transitions)
+    possibletransition_comb_tuples = itertools.product(*possibletransitions)
+    poss_trans = []
+    for comb in possibletransition_comb_tuples:
+        sumlist = []
+        for i in range(len(possibletransitions)):
+            sumlist = sumlist+comb[i]
+        poss_trans.append(sumlist)
+
+    ##Discharge patterns excluded
+    disch = []
+    for specialty in range(d):
+        disch = disch + [0]*(n-1)+[state[n-1+(n*specialty)]]
+    disch = np.array(disch)
+
+    ##Add discharge to transitions
+    for i in range(len(poss_trans)):
+        pos_i = np.array(poss_trans[i])
+        pos_i = pos_i+disch
+        poss_trans[i] = pos_i.tolist()
+    return poss_trans
+
+def stateSpace(L,E,S):
+    n=E.amount
+    d=S.amount
+    state0 = tuple([0]*n*d)
+    statelist = actionChecker([state0], L, S)
+    statedict = {}
+    statedict[state0]=statelist[0]
+    for state in statelist[1]:
+        pass
+    return statedict
+
 def main():
     ##Number of specialties d
     d= 2
@@ -317,7 +396,7 @@ def main():
     n=3
     ## avg resource utilization per period
     ## avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
-    avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
+    avg_ut = np.array([[2.2,2.6,0],[2.6,2.2,0]])
     ## Utilization cap
     cap_L = np.array([4,4])
 
@@ -328,21 +407,24 @@ def main():
     L = Resources(num_res, max_L, avg_ut, cap_L, cap_cost)
     E = Patterns(n)
     S = Specialties(d, max_S)
+
+    state= [0,0,0,0,0,0]
     ##What is our stateList
-    statelist = stateSpace(L, E, S)
-    ##Put statelist in file
-    outputFile(statelist, 'statelist')
-    ##What is our actionlist
-    actionlist = actionSpace(statelist, L,S)
-    actiondistributions = actionlist[1]
-    print(actiondistributions)
+    statelist = transitioner(state, E, S)
+
+    statespace = stateSpace(L,E,S)
+    print('Statespace '+str(statespace))
+    #What are the actions we can take for each statelist state
+    actionlist = actionChecker(statelist, L,S)
+    print(state, actionlist[0])
+    # actiondistributions = actionlist[1]
+    # print(actiondistributions)
     ##Put actionlist in file
-    outputFile(actionlist[0], 'actionlist')
-    state = [0,2,0,3,3,0]
-    action = [1,1]
-    cost= costFunction(state, action, actiondistributions, L)
-    print(cost)
-    print('Remember we have allowed a factor of 1.1 of the actual max utilization')
+    # outputFile(actionlist[0], 'actionlist')
+
+    # cost= costFunction(state, action, actiondistributions, L)
+    # print(cost)
+    print('Remember we have allowed a factor of '+str(bandwidth)+' of the actual max utilization')
 
 
 main()
