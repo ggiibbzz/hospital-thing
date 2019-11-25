@@ -123,11 +123,27 @@ class Resources:
         ## What's the cost for going over this cap?
         self.cost = cap_cost
 
+    def isOverUt(self, state):
+        ##We have to group all the treatment patterns together
+        ## self.avgMatrix[0] has length n-1 so len(self.avgMatrix[0])+1 = n
+        n= len(self.avgMatrix[0])+1
+        for res_ind in range(self.amount):
+            sum = 0
+            for i in range(len(self.avgMatrix[0])):
+                for j in range(len(state)//(n)):
+                    ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
+                    sum+=(state[i+j*n]*self.avgMatrix[res_ind][i])
+            if sum > self.max[res_ind]*1.1:
+                return True
+            else:
+                pass
+        return False
+
+
 class Patterns:
     def __init__(self, num_patterns):
         ##How many treatment patterns are there
         self.amount = num_patterns
-        self.statespace = []
 
 
 
@@ -151,6 +167,139 @@ class Specialties:
             self.actions.append(list(action))
     __Actions = Actions
 
+
+def actionSpace(statelist, L, S):
+    ##number of treatment patterns in a specialty
+    n = int(len(statelist[0])/S.amount)
+    ##All possible admission distributions given a state
+    actionwithactionstates = []
+    for action in S.actions:
+        A = [0]*int(S.amount)
+        actionstates=[]
+        for i in range(S.amount):
+            A[i] = tuple(partition(action[i],n-1))
+        B = itertools.product(*A)
+        # print('A with action ' +str(action)+' equals '+str(A))
+
+        for statecouple in B:
+            state=[]
+            addnr = 0
+            for i in range(S.amount):
+                if sum(statecouple[i]) == action[i]:
+                    addnr+=1
+                else:
+                    pass
+            if addnr == S.amount:
+                for statenr in range(S.amount):
+                    state=state+statecouple[statenr]+[0]
+                actionstates.append(state)
+
+            else:
+                pass
+        actionwithactionstates.append((action, actionstates))
+    ##now lets make actionspace
+    statewithactionstates=[]
+    statewithactiondistrs=[]
+    for state in statelist:
+        allpossacts = []
+        allpossactsdistrs = []
+        for action in S.actions:
+            distrs=[]
+            for i in range(len(actionwithactionstates)):
+                if actionwithactionstates[i][0]== action:
+                    distrs = actionwithactionstates[i][1]
+                    # print('distrs for state '+str(state)+ ' with action ' +str(action)+ ' equals '+str(distrs))
+                else:
+                    pass
+
+                for j in range(len(distrs)):
+                    staat = np.array(state)+np.array(distrs[j])
+                    staat = staat.tolist()
+                    if L.isOverUt(staat) == False and distrs[j] != [0]*S.amount*n:
+                        allpossacts.append(tuple(action))
+                        allpossactsdistrs.append(tuple(distrs[j]))
+        allpossacts.append((0,)*S.amount)
+        allpossactsdistrs.append((0,)*S.amount*n)
+        allpossactsnodupes = list(dict.fromkeys(allpossacts))
+        allpossactsdistrsnodupes = list(dict.fromkeys(allpossactsdistrs))
+        statewithactionstates.append([state, tuple(allpossactsnodupes)])
+        statewithactiondistrs.append([state, tuple(allpossactsdistrsnodupes)])
+
+    return [statewithactionstates, statewithactiondistrs]
+def stateSpace(L, E, S):
+    ##Find maximum amount of people in a single treatment pattern
+    max_ut = max(L.max)
+    min_avg_ut = max(L.max)
+    for i in range(len(L.avgMatrix)):
+        if min(L.avgMatrix[i])<min_avg_ut:
+            min_avg_ut = min(L.avgMatrix[i])
+    ##max_ut//min_avg_ut will be an upper bound
+    N=max_ut//min_avg_ut
+    N=N*1.5
+    B = [*range(int(N))]
+    A = itertools.product(B, repeat= E.amount-1)
+    C=[]
+    for semistate in A:
+        semistate = list(semistate)+[0]
+        C.append(semistate)
+    D = itertools.product(C, repeat= S.amount)
+    statespace = []
+    for state in D:
+        staat=[]
+        for i in range(len(state)):
+            staat = staat+state[i]
+        if L.isOverUt(list(staat)) == False:
+            statespace.append(staat)
+    return statespace
+
+def outputFile(lijst, name):
+    f = open(name+'.txt', "w+")
+    for i in lijst:
+        f.write(str(i)+"\n")
+    f.close()
+
+def costFunction(state, action, actiondistributions, L):
+    ##We don't need to find all the states reachable with the action, since we're only looking for the worst case scenario
+    possibledistributions=[]
+    for i in range(len(actiondistributions)):
+        if tuple(state) == tuple(actiondistributions[i][0]):
+            possibledistributions = list(actiondistributions[i][1])
+    states_nextperiod = []
+    for distr in possibledistributions:
+        staat = np.array(state)+np.array(distr)
+        staat = staat.tolist()
+        n = int(len(staat)/len(action))
+        sumboolean = True
+        for i in range(len(action)):
+            if sum(distr[n*i:n*(i+1)]) == action[i]:
+                pass
+            else:
+                sumboolean = False
+        if sumboolean == True:
+            states_nextperiod.append(staat)
+    ## Now states_nextperiod contains all the states our action takes us to.
+    ##And now for the probabilities:
+    totaalsom = 0
+    for nextstate in states_nextperiod:
+        n = int(len(nextstate) / len(action))
+        ##We need to calculate how many people use resource Lj in nextstate
+        total_avgusage_per_resource = []
+        som=0
+        for res_numbr in range(L.amount):
+            total_avgusage=0
+            for specialty in range(len(action)):
+                for tr_pat in range(n-1):
+                    ##avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
+                    ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
+                    total_avgusage += nextstate[tr_pat+(specialty*n)]*L.avgMatrix[res_numbr][tr_pat]
+            Oj = L.cost[0][res_numbr]*max(0, L.cap[res_numbr]-total_avgusage)
+            Bj = L.cost[1][res_numbr]*max(0, total_avgusage-L.cap[res_numbr])
+            Cj = L.cost[2][res_numbr]*max(0, total_avgusage-L.max[res_numbr])
+            som += Oj+Bj+Cj
+        for specialty in range(len(action)):
+            totaalsom += CalcProb(nextstate[n*specialty:n*(specialty+1)], state[n*specialty:n*(specialty+1)], action[specialty], specialty)*som
+    return totaalsom
+
 def main():
     ##Number of specialties d
     d= 2
@@ -170,13 +319,28 @@ def main():
     ## Utilization cap
     cap_L = np.array([4,4])
 
-    ##Cost for resource deviation
+    ##Cost for resource deviation idleness, excess and over
     cap_cost = np.array([[1.0,1.6],[1.5,1.0],[1.0,1.0]])
 
     ## We can put this in our resource, specialty and treatment pattern class
     L = Resources(num_res, max_L, avg_ut, cap_L, cap_cost)
     E = Patterns(n)
     S = Specialties(d, max_S)
+    ##What is our stateList
+    statelist = stateSpace(L, E, S)
+    ##Put statelist in file
+    outputFile(statelist, 'statelist')
+    ##What is our actionlist
+    actionlist = actionSpace(statelist, L,S)
+    actiondistributions = actionlist[1]
+    print(actiondistributions)
+    ##Put actionlist in file
+    # outputFile(actionlist[0], 'actionlist')
+    state = [0,0,0,1,1,0]
+    action = [0,1]
+    cost= costFunction(state, action, actiondistributions, L)
+    print(cost)
+    print('Remember we have allowed a factor of 1.1 of the actual max utilization')
 
 
 main()

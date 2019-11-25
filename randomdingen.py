@@ -1,17 +1,3 @@
 import numpy as np
 import itertools
-class Hoi:
-    def __init__(self, geel):
-        Hoi.geel = geel
-
-def IsGeel(kleur):
-    if kleur == hoi.geel:
-        True
-    else:
-        False
-def main():
-    yellow = 'geel'
-    hoi = Hoi(yellow)
-    nietyellow= 'rood'
-    IsGeel(nietyellow)
-main()
+print(np.array((1,0,2,3)))
