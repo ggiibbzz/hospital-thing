@@ -22,7 +22,7 @@ trans_probs = np.array([[[0.4, 0.1, 0.5], [0.1, 0.3, 0.6], [0.0, 0.0, 1.0]], [[0
 ##Entering probs = [entering in specialty 1, entering in specialty 2]
 enter_probs = np.array([[0.5, 0.5, 0.0], [0.4, 0.6, 0.0]])
 #######
-
+bandwidth = 1
 
 
 ##Calculates the entering probability given the particular action distributed over the treatment patterns and the specialty
@@ -133,7 +133,7 @@ class Resources:
                 for j in range(len(state)//(n)):
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
                     sum+=(state[i+j*n]*self.avgMatrix[res_ind][i])
-            if sum > self.max[res_ind]*1.1:
+            if sum > self.max[res_ind]*bandwidth:
                 return True
             else:
                 pass
@@ -235,7 +235,7 @@ def stateSpace(L, E, S):
             min_avg_ut = min(L.avgMatrix[i])
     ##max_ut//min_avg_ut will be an upper bound
     N=max_ut//min_avg_ut
-    N=N*1.5
+    N=N*bandwidth
     B = [*range(int(N))]
     A = itertools.product(B, repeat= E.amount-1)
     C=[]
@@ -296,8 +296,10 @@ def costFunction(state, action, actiondistributions, L):
             Bj = L.cost[1][res_numbr]*max(0, total_avgusage-L.cap[res_numbr])
             Cj = L.cost[2][res_numbr]*max(0, total_avgusage-L.max[res_numbr])
             som += Oj+Bj+Cj
+        P=1
         for specialty in range(len(action)):
-            totaalsom += CalcProb(nextstate[n*specialty:n*(specialty+1)], state[n*specialty:n*(specialty+1)], action[specialty], specialty)*som
+             P = P*CalcProb(nextstate[n*specialty:n*(specialty+1)], state[n*specialty:n*(specialty+1)], action[specialty], specialty)
+        totaalsom+=P*som
     return totaalsom
 
 def main():
@@ -335,9 +337,9 @@ def main():
     actiondistributions = actionlist[1]
     print(actiondistributions)
     ##Put actionlist in file
-    # outputFile(actionlist[0], 'actionlist')
-    state = [0,0,0,1,1,0]
-    action = [0,1]
+    outputFile(actionlist[0], 'actionlist')
+    state = [0,2,0,3,3,0]
+    action = [1,1]
     cost= costFunction(state, action, actiondistributions, L)
     print(cost)
     print('Remember we have allowed a factor of 1.1 of the actual max utilization')
