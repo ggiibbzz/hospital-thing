@@ -1,6 +1,8 @@
 import numpy as np
 import itertools
 import math
+import sys
+sys.setrecursionlimit(6000)
 
 ##Recursive algorithm for creating partitions of the integer n in d equal parts.
 ##E.g. n=5 in d=2: [5,0],[4,1],[3,2],[2,3],[1,4],[0,5]
@@ -12,6 +14,12 @@ def partition(n, d, depth=0):
         for i in range(n+1)
         for item in partition(n-i, d, depth=depth+1)
         ]
+
+#makes lists unique and preserves order!
+def f7(seq):
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]
 
 
 #I'm keeping the next two as global variables since it is a pain to put them through multiple functions.
@@ -126,16 +134,17 @@ class Resources:
     def isOverUt(self, state):
         ##We have to group all the treatment patterns together
         ## len(self.avgMatrix[0]) = n
-        n= len(self.avgMatrix[0])+1
+        n= len(self.avgMatrix[0])
         for res_ind in range(self.amount):
             som = 0
             for i in range(len(self.avgMatrix[0])):
                 P=0
-                for d in range(len(state)//(n)):
+                for d in range((len(state)//(n))):
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
                     for l in range(len(self.avgMatrix[0])):
                         P += (state[i+d*n]*trans_probs[d][l][i])
                 som += P*self.avgMatrix[res_ind][i]
+
             if som > self.max[res_ind]*bandwidth:
                 return True
             else:
@@ -214,17 +223,18 @@ def actionChecker(statelist, L, S):
                     # print('distrs for state '+str(state)+ ' with action ' +str(action)+ ' equals '+str(distrs))
                 else:
                     pass
-
                 for j in range(len(distrs)):
                     staat = np.array(state)+np.array(distrs[j])
                     staat = staat.tolist()
-                    if L.isOverUt(staat) == False and distrs[j] != [0]*S.amount*n:
+                    if L.isOverUt(staat) == False:
+                        # if distrs[j] != [0]*S.amount*n:
                         allpossacts.append(tuple(action))
                         allpossactsdistrs.append(tuple(staat))
-        allpossacts.append((0,)*S.amount)
+        # allpossacts.append((0,)*S.amount)
 
         ##Maybe functionality that we'll want later
-        # allpossactsdistrs.append((0,)*S.amount*n)
+        # nulletjes = (0,)*S.amount*n
+        # allpossactsdistrs.append(nulletjes)
 
 
         allpossactsnodupes = list(dict.fromkeys(allpossacts))
@@ -320,7 +330,7 @@ def costFunction(state, action, actiondistributions, L):
         totaalsom+=P*som
     return totaalsom
 
-def transitioner(state, E, S):
+def transitioner(state, L, E, S):
     n = E.amount
     d = S.amount
     possibletransitions = []
@@ -350,12 +360,12 @@ def transitioner(state, E, S):
         ##Start gluing the specialties together
         possibletransitions.append(poss_combs_of_transitions)
     possibletransition_comb_tuples = itertools.product(*possibletransitions)
-    poss_trans = []
+    semiposs_trans = []
     for comb in possibletransition_comb_tuples:
         sumlist = []
         for i in range(len(possibletransitions)):
             sumlist = sumlist+comb[i]
-        poss_trans.append(sumlist)
+        semiposs_trans.append(sumlist)
 
     ##Discharge patterns excluded
     disch = []
@@ -364,22 +374,58 @@ def transitioner(state, E, S):
     disch = np.array(disch)
 
     ##Add discharge to transitions
-    for i in range(len(poss_trans)):
-        pos_i = np.array(poss_trans[i])
+    for i in range(len(semiposs_trans)):
+        pos_i = np.array(semiposs_trans[i])
         pos_i = pos_i+disch
-        poss_trans[i] = pos_i.tolist()
+        semiposs_trans[i] = pos_i.tolist()
+    poss_trans = []
+    for semipos in semiposs_trans:
+        if L.isOverUt(semipos) == False:
+            poss_trans.append(semipos)
     return poss_trans
 
-def stateSpace(L,E,S):
-    n=E.amount
-    d=S.amount
-    state0 = tuple([0]*n*d)
-    statelist = actionChecker([state0], L, S)
-    statedict = {}
-    statedict[state0]=statelist[0]
-    for state in statelist[1]:
-        pass
-    return statedict
+# def stateSpace(state0, statevector, L, S):
+#     statelist = actionChecker([list(state0)], L, S)
+#     statevector.append(state0)
+#     for staat in statelist[1]:
+#         if staat in statevector:
+#             return statevector
+#         else:
+#             stateSpace(staat,statevector, L, S)
+
+
+##Since transitioner only transitions and actionChecker only adds them lets combine those two
+def posStates(state0, L, E, S):
+    transitionstates = transitioner(state0, L, E, S)
+    everyposstate = ()
+    for transition in transitionstates:
+        everyposstate = everyposstate + actionChecker([transition], L , S)[1]
+    return everyposstate
+
+
+def stateSpace(state0, statevector, L, E, S):
+    statelist = list(posStates(state0, L, E, S))
+    nextstates = []
+    for state in statelist:
+        nextstates = nextstates + list(posStates(state, L, E, S))
+    nextstates = statelist + nextstates
+    nextstates = f7(tuple(nextstates))
+
+    while len(nextstates) > len(statelist):
+        uniquestates = nextstates[len(statelist):]
+        print(1)
+        statelist = nextstates
+        nextstates = []
+        i = 0
+        for uniquestate in uniquestates:
+            i += 1
+            nextstates = nextstates + list(posStates(uniquestate, L, E, S))
+            nextstates = f7(tuple(nextstates))
+            print(len(uniquestates), i)
+        nextstates = statelist + nextstates
+        nextstates = f7(tuple(nextstates))
+        print(len(nextstates))
+    return nextstates
 
 def main():
     ##Number of specialties d
@@ -408,15 +454,17 @@ def main():
     E = Patterns(n)
     S = Specialties(d, max_S)
 
-    state= [0,0,0,0,0,0]
-    ##What is our stateList
-    statelist = transitioner(state, E, S)
+    print(transitioner((0, 1, 1, 0, 2, 6 ), L, E, S))
+    print(actionChecker([(0, 1, 1, 0, 2, 6 )], L, S))
 
-    statespace = stateSpace(L,E,S)
-    print('Statespace '+str(statespace))
+    # print(posStates((1, 0, 2, 3, 3, 1 ),L ,E ,S))
+    # state= (0,)*S.amount*E.amount
+    # state = (0,0,0,0,0,0)
+    ##What is our stateList
+    # statelist = stateSpace(state,[], L, E, S)
+    # print(len(statelist), statelist)
     #What are the actions we can take for each statelist state
-    actionlist = actionChecker(statelist, L,S)
-    print(state, actionlist[0])
+    # actionlist = actionChecker(statelist, L,S)
     # actiondistributions = actionlist[1]
     # print(actiondistributions)
     ##Put actionlist in file
