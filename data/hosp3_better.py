@@ -1,8 +1,9 @@
 import numpy as np
 import itertools
 import math
-import sys
-sys.setrecursionlimit(6000)
+from ast import literal_eval
+import time
+
 
 ##Recursive algorithm for creating partitions of the integer n in d equal parts.
 ##E.g. n=5 in d=2: [5,0],[4,1],[3,2],[2,3],[1,4],[0,5]
@@ -30,7 +31,6 @@ trans_probs = np.array([[[0.8, 0.2], [0.0, 1.0]]])
 ##Entering probs = [entering in specialty 1, entering in specialty 2]
 enter_probs = np.array([[1.0, 0.0]])
 #######
-bandwidth = 1
 
 
 ##Calculates the entering probability given the particular action distributed over the treatment patterns and the specialty
@@ -56,66 +56,67 @@ def TransProbs(comptuples, specialty):
 ##Given state_(t+1), state_t, action and specialty this will calculate the probability of going from one state to another
 ##It will obviously use the functions given above (EnterProb() and TransProbs())
 def CalcProb(state2, state1, actionnr, specialty):
-    B=[]
-    C=[]
+    if sum(state2) != sum(state1[:len(state1)])+actionnr:
+        return 0
+    else:
+        B=[]
+        C=[]
 
-    ##Targetlist is a list for all targets I want to reach by applying only transitions.
-    ##One target is state2-action
-    targetlist=[]
-    for i in range(len(state2)-1):
-        B.append([*range(state2[i]+1)])
-    A = itertools.product(*B)
-    for action in A:
-        action = list(action)+[0]
-        if sum(action)== actionnr:
-            C.append(action)
-        else:
-            pass
-    for action in C:
-        target = np.array(state2)-np.array(action)
-        targetlist.append([target.tolist(),EnterProb(action, specialty)])
-    transition_prob_sums = []
-    ##Now we want to work for each target alone
-    for targ in targetlist:
-        ##Create a list for transitions
-        trans = []
-        ##Create a list for the sums of transitions
-        transsums = []
-        probsums = []
-        ##Let us iterate over the elements in target, except for the last element since that is the discharge
-        for j in range(len(targ[0])-1):
-            ##list of transitions created by going over the partition created by varying component j
-            lst3=[]
-            ## To partition sumlist in a component for every j, we must create a new list. sumlist = [[...], [...], ..., [...]]
-            for i in range(targ[0][j]+1):
-                ##Since i stands for how many patients we keep in a treatment pattern we need to calculate how many we have to distribute
-                # extend with n-sum(entries)
-                n = state1[j]-i
-                d = len(state1)-1
-                lst = [[n - sum(p)] + p for p in partition(n, d - 1)]
-                lst2=[]
-                for lijst in lst:
-                    lijst = lijst[0:j] + [i] + lijst[j:]
-                    lst2.append(lijst)
-                lst3 = lst3 + [element for element in lst2]
-            trans.append(lst3)
-        ##All cartesian product
-        transprods = itertools.product(*trans)
-        for prod in transprods:
-            som = sum([np.array(list(prod)[u]) for u in range(len(state2)-1)])
-            if som.tolist() == targ[0]:
-                transsums.append([prod, TransProbs(prod, specialty)])
-            else:
-                pass
-        kans=0
-        for v in range(len(transsums)):
-            kans = kans + transsums[v][1]
-        transition_prob_sums.append(kans)
-    finalsum = 0
-    for i in range(len(transition_prob_sums)):
-        secondtofinalprod = transition_prob_sums[i]*targetlist[i][1]
-        finalsum = finalsum+secondtofinalprod
-    return finalsum
+        ##Targetlist is a list for all targets I want to reach by applying only transitions.
+        ##One target is state2-action
+        targetlist=[]
+        for i in range(len(state2)-1):
+            B.append([*range(state2[i]+1)])
+        A = itertools.product(*B)
+        for action in A:
+            action = list(action)+[0]
+            if sum(action)== actionnr:
+                C.append(action)
+        for action in C:
+            target = np.array(state2)-np.array(action)
+            targetlist.append([target.tolist(),EnterProb(action, specialty)])
+        transition_prob_sums = []
+        ##Now we want to work for each target alone
+        for targ in targetlist:
+            ##Create a list for transitions
+            trans = []
+            ##Create a list for the sums of transitions
+            transsums = []
+            probsums = []
+            ##Let us iterate over the elements in target, except for the last element since that is the discharge
+            for j in range(len(targ[0])-1):
+                ##list of transitions created by going over the partition created by varying component j
+                lst3=[]
+                ## To partition sumlist in a component for every j, we must create a new list. sumlist = [[...], [...], ..., [...]]
+                for i in range(targ[0][j]+1):
+                    ##Since i stands for how many patients we keep in a treatment pattern we need to calculate how many we have to distribute
+                    # extend with n-sum(entries)
+                    n = state1[j]-i
+                    d = len(state1)-1
+                    lst = [[n - sum(p)] + p for p in partition(n, d - 1)]
+                    lst2=[]
+                    for lijst in lst:
+                        lijst = lijst[0:j] + [i] + lijst[j:]
+                        lst2.append(lijst)
+                    lst3 = lst3 + [element for element in lst2]
+                trans.append(lst3)
+            ##All cartesian product
+            transprods = itertools.product(*trans)
+            for prod in transprods:
+                som = sum([np.array(list(prod)[u]) for u in range(len(state2)-1)])
+                if som.tolist() == targ[0]:
+                    transsums.append([prod, TransProbs(prod, specialty)])
+                else:
+                    pass
+            kans=0
+            for v in range(len(transsums)):
+                kans = kans + transsums[v][1]
+            transition_prob_sums.append(kans)
+        finalsum = 0
+        for i in range(len(transition_prob_sums)):
+            secondtofinalprod = transition_prob_sums[i]*targetlist[i][1]
+            finalsum = finalsum+secondtofinalprod
+        return finalsum
 
 #Resource class L
 class Resources:
@@ -141,12 +142,11 @@ class Resources:
                 P=0
                 for d in range((len(state)//(n))):
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
-
                     for l in range(len(self.avgMatrix[0])):
-                        P += (state[i+d*n]*trans_probs[d][l][i])
+                        P += (state[l+d*n]*trans_probs[d][l][i])
                 som += P*self.avgMatrix[res_ind][i]
 
-            if som > self.max[res_ind]*bandwidth:
+            if som > self.max[res_ind]:
                 return True
             else:
                 pass
@@ -177,7 +177,6 @@ class Specialties:
             self.actions.append(list(action))
     __Actions = Actions
 
-
 def actionChecker(state0, L, E, S):
     ##number of treatment patterns in a specialty
     n = E.amount
@@ -186,8 +185,8 @@ def actionChecker(state0, L, E, S):
     allpossibleactions = ()
     for action in S.actions:
         if L.isOverUt(state0) == True:
-            allpossibleactions = ((0,)*S.amount,)
-            actionstatess = ((0,)*n*S.amount,)
+            allpossibleactions = ((0,) * S.amount,)
+            actionstatess = ((0,) * n * S.amount,)
         else:
             A = [0]*int(S.amount)
             actionstates=()
@@ -205,9 +204,9 @@ def actionChecker(state0, L, E, S):
                 if addnr == S.amount:
                     for statenr in range(S.amount):
                         state=state+statecouple[statenr]+[0]
-                    actionstates = actionstates + tuple(state)
+                    actionstates = actionstates + (tuple(state),)
             action = tuple(action)
-            actionstatess = actionstatess +  (actionstates,)
+            actionstatess = actionstatess + actionstates
             allpossibleactions = allpossibleactions + (action,)
     return allpossibleactions, actionstatess
 
@@ -217,30 +216,13 @@ def outputFile(lijst, name):
         f.write(str(i)+"\n")
     f.close()
 
-def costFunction(state, action, actiondistributions, L):
+def costFunction(state, action, L, E, S):
     ##We don't need to find all the states reachable with the action, since we're only looking for the worst case scenario
-    possibledistributions=[]
-    for i in range(len(actiondistributions)):
-        if tuple(state) == tuple(actiondistributions[i][0]):
-            possibledistributions = list(actiondistributions[i][1])
-    states_nextperiod = []
-    for distr in possibledistributions:
-        staat = np.array(state)+np.array(distr)
-        staat = staat.tolist()
-        n = int(len(staat)/len(action))
-        sumboolean = True
-        for i in range(len(action)):
-            if sum(distr[n*i:n*(i+1)]) == action[i]:
-                pass
-            else:
-                sumboolean = False
-        if sumboolean == True:
-            states_nextperiod.append(staat)
-    ## Now states_nextperiod contains all the states our action takes us to.
+    allPossStates = posStatesGivenAction(state, action, L, E, S)
     ##And now for the probabilities:
     totaalsom = 0
-    for nextstate in states_nextperiod:
-        n = int(len(nextstate) / len(action))
+    for nextstate in allPossStates:
+        n = E.amount
         ##We need to calculate how many people use resource Lj in nextstate
         total_avgusage_per_resource = []
         som=0
@@ -331,6 +313,28 @@ def posStates(state0, L, E, S):
                 everyposstate = everyposstate + (combination,)
     return everyposstate
 
+def posStatesGivenAction(state0, action, L, E, S):
+    possTrans = tuple(transitioner(state0, L, E, S))
+    n = E.amount
+    A = [0] * int(S.amount)
+    possActionDistrs = []
+    for i in range(S.amount):
+        A[i] = [[action[i]-sum(p)] + p for p in partition(action[i], n-2)]
+    B = itertools.product(*A)
+    for distr in B:
+        distrib = []
+        for d in range(S.amount):
+            distrib = distrib + distr[d] + [0]
+        possActionDistrs.append(tuple(distrib))
+    possStates = []
+    for trans in possTrans:
+        nptrans = np.array(trans)
+        for act in possActionDistrs:
+            npact = np.array(act)
+            som = nptrans + npact
+            som2 = tuple(som)
+            possStates.append(som2)
+    return possStates
 
 def stateSpace(state0, L, E, S):
     statelist = list(posStates(state0, L, E, S))
@@ -339,6 +343,7 @@ def stateSpace(state0, L, E, S):
         nextstates = nextstates + list(posStates(state, L, E, S))
     nextstates = statelist + nextstates
     nextstates = f7(tuple(nextstates))
+    print(nextstates)
 
     while len(nextstates) > len(statelist):
         uniquestates = nextstates[len(statelist):]
@@ -351,6 +356,7 @@ def stateSpace(state0, L, E, S):
             nextstates = f7(tuple(nextstates))
         nextstates = statelist + nextstates
         nextstates = f7(tuple(nextstates))
+        print(nextstates)
     return nextstates
 
 def main():
@@ -380,31 +386,30 @@ def main():
     E = Patterns(n)
     S = Specialties(d, max_S)
 
+    #Creates state space
+    start = time.time()
+    A = stateSpace((0,0),L,E,S)
+    end = time.time()
+    print(end - start)
+    # print(len(A), A)
+    # outputFile(A, "statespace")
 
-    # print(posStates((4,0),L,E,S))
-    # print(actionChecker((2,0),L,E,S))
-    # print(len(stateSpace((0,0), L, E, S)), stateSpace((0,0), L, E, S))
+    ##Since we do not want to recalculate the state space all the time we just save it externally and call it up
+    # statenspatie = open("statespace.txt", 'r')
+    # statespace = []
+    # for state in statenspatie:
+    #     listContent = state.rstrip()
+    #     tupel = literal_eval(listContent)
+    #     statespace.append(tupel)
+    # statenspatie.close()
 
-    print(actionChecker((3,0),L,E,S))
+    ##Time for action space
+    # statewithactions = []
+    # for state in statespace:
+    #     actions = actionChecker(state, L, E, S)[0]
+    #     statewithactions.append((state, actions))
+    # outputFile(statewithactions, "actionspace")
 
-
-
-    # print(posStates((1, 0, 2, 3, 3, 1 ),L ,E ,S))
-    # state= (0,)*S.amount*E.amount
-    # state = (0,0,0,0,0,0)
-    ##What is our stateList
-    # statelist = stateSpace(state,[], L, E, S)
-    # print(len(statelist), statelist)
-    #What are the actions we can take for each statelist state
-    # actionlist = actionChecker(state, L, E,S)
-    # actiondistributions = actionlist[1]
-    # print(actiondistributions)
-    ##Put actionlist in file
-    # outputFile(actionlist[0], 'actionlist')
-
-    # cost= costFunction(state, action, actiondistributions, L)
-    # print(cost)
-    print('Remember we have allowed a factor of '+str(bandwidth)+' of the actual max utilization')
-
+    # print(costFunction((0,1,0,2,0,0),(1,0), L, E, S))
 
 main()

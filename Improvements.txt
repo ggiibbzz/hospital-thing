@@ -1,0 +1,1 @@
+In actionChecker you can attempt to improve the addnr thing. I think it's not necessary to have it.

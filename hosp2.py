@@ -360,20 +360,20 @@ def main():
     max_S= np.array([2])
 
     ## NUMBER OF RESOURCES
-    num_res = 2
+    num_res = 1
     ## max(L_j)
-    max_L = np.array([5,5])
+    max_L = np.array([3])
 
     ## Number of treatment patterns
     n=2
     ## avg resource utilization per period
     ## avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
-    avg_ut = np.array([[2.2,0],[2.6,0]])
+    avg_ut = np.array([[1.2,0]])
     ## Utilization cap
-    cap_L = np.array([4,4])
+    cap_L = np.array([2])
 
     ##Cost for resource deviation idleness, excess and over
-    cap_cost = np.array([[1.0,1.6],[1.5,1.0],[1.0,1.0]])
+    cap_cost = np.array([[1.0],[1.5],[1.0]])
 
     ## We can put this in our resource, specialty and treatment pattern class
     L = Resources(num_res, max_L, avg_ut, cap_L, cap_cost)
@@ -383,10 +383,7 @@ def main():
 
     # print(posStates((4,0),L,E,S))
     # print(actionChecker((2,0),L,E,S))
-    # print(len(stateSpace((0,0), L, E, S)), stateSpace((0,0), L, E, S))
-
-    print(actionChecker((3,0),L,E,S))
-
+    print(len(stateSpace((0,0), L, E, S)), stateSpace((0,0), L, E, S))
 
 
     # print(posStates((1, 0, 2, 3, 3, 1 ),L ,E ,S))

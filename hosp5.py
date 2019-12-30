@@ -26,9 +26,9 @@ def f7(seq):
 #######
 ## Probability configuration
 ## probabilities = [transitioning in specialty 1, transitioning in specialty 2]
-trans_probs = np.array([[[0.8, 0.2], [0.0, 1.0]]])
+trans_probs = np.array([[[0.4, 0.1, 0.5], [0.1, 0.3, 0.6], [0.0, 0.0, 1.0]], [[0.2, 0.1, 0.7], [0.1, 0.2, 0.7], [0.0, 0.0, 1.0]]])
 ##Entering probs = [entering in specialty 1, entering in specialty 2]
-enter_probs = np.array([[1.0, 0.0]])
+enter_probs = np.array([[0.5, 0.5, 0.0], [0.4, 0.6, 0.0]])
 #######
 bandwidth = 1
 
@@ -141,9 +141,8 @@ class Resources:
                 P=0
                 for d in range((len(state)//(n))):
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
-
                     for l in range(len(self.avgMatrix[0])):
-                        P += (state[i+d*n]*trans_probs[d][l][i])
+                        P += (state[l+d*n]*trans_probs[d][l][i])
                 som += P*self.avgMatrix[res_ind][i]
 
             if som > self.max[res_ind]*bandwidth:
@@ -177,7 +176,6 @@ class Specialties:
             self.actions.append(list(action))
     __Actions = Actions
 
-
 def actionChecker(state0, L, E, S):
     ##number of treatment patterns in a specialty
     n = E.amount
@@ -186,8 +184,8 @@ def actionChecker(state0, L, E, S):
     allpossibleactions = ()
     for action in S.actions:
         if L.isOverUt(state0) == True:
-            allpossibleactions = ((0,)*S.amount,)
-            actionstatess = ((0,)*n*S.amount,)
+            allpossibleactions = ((0,) * S.amount,)
+            actionstatess = ((0,) * n * S.amount,)
         else:
             A = [0]*int(S.amount)
             actionstates=()
@@ -205,11 +203,74 @@ def actionChecker(state0, L, E, S):
                 if addnr == S.amount:
                     for statenr in range(S.amount):
                         state=state+statecouple[statenr]+[0]
-                    actionstates = actionstates + tuple(state)
+                    actionstates = actionstates + (tuple(state),)
             action = tuple(action)
-            actionstatess = actionstatess +  (actionstates,)
+            actionstatess = actionstatess + actionstates
             allpossibleactions = allpossibleactions + (action,)
     return allpossibleactions, actionstatess
+
+
+
+# def actionChecker(state0, L, E, S):
+#     ##number of treatment patterns in a specialty
+#     n = E.amount
+#     ##All possible admission distributions given a state
+#     actionwithactionstates = []
+#     for action in S.actions:
+#         if L.isOverUt(state0) == True:
+#             action = [0]*S.amount
+#             actionstate = [[0]*n*S.amount]
+#             actionwithactionstates = [(action,actionstate)]
+#         else:
+#             A = [0]*int(S.amount)
+#             actionstates=[]
+#             for i in range(S.amount):
+#                 A[i] = tuple(partition(action[i],n-1))
+#             B = itertools.product(*A)
+#             # print('A with action ' +str(action)+' equals '+str(A))
+#
+#             for statecouple in B:
+#                 state=[]
+#                 addnr = 0
+#                 for i in range(S.amount):
+#                     if sum(statecouple[i]) == action[i]:
+#                         addnr+=1
+#                     else:
+#                         pass
+#                 if addnr == S.amount:
+#                     for statenr in range(S.amount):
+#                         state=state+statecouple[statenr]+[0]
+#                     actionstates.append(state)
+#             actionwithactionstates.append((action, actionstates))
+#     ##now lets make actionspace
+#     statewithactionstates=[]
+#     statewithactiondistrs=[]
+#     allpossacts = []
+#     allpossactsdistrs = []
+#     for action in S.actions:
+#         distrs=[]
+#         for i in range(len(actionwithactionstates)):
+#             if actionwithactionstates[i][0]== action:
+#                 distrs = actionwithactionstates[i][1]
+#                 # print('distrs for state '+str(state)+ ' with action ' +str(action)+ ' equals '+str(distrs))
+#             for j in range(len(distrs)):
+#                 staat = np.array(state0)+np.array(distrs[j])
+#                 staat = staat.tolist()
+#                 allpossacts.append(tuple(action))
+#                 allpossactsdistrs.append(tuple(staat))
+#
+#         allpossactsnodupes = f7(tuple(allpossacts))
+#
+#         allpossactsdistrsnodupes = f7(tuple(allpossactsdistrs))
+#
+#         statewithactionstates.append([state0, tuple(allpossactsnodupes)])
+#
+#         statewithactiondistrs.append([state0, tuple(allpossactsdistrsnodupes)])
+#     allpossibleactions = ()
+#     for i in range(len(statewithactionstates)):
+#         allpossibleactions = allpossibleactions+ statewithactionstates[i][1]
+#     allpossibleactions = tuple(f7(allpossibleactions))
+#     return allpossibleactions, actionwithactionstates #tuple(allpossactsdistrsnodupes)
 
 def outputFile(lijst, name):
     f = open(name+'.txt', "w+")
@@ -331,7 +392,6 @@ def posStates(state0, L, E, S):
                 everyposstate = everyposstate + (combination,)
     return everyposstate
 
-
 def stateSpace(state0, L, E, S):
     statelist = list(posStates(state0, L, E, S))
     nextstates = []
@@ -351,13 +411,14 @@ def stateSpace(state0, L, E, S):
             nextstates = f7(tuple(nextstates))
         nextstates = statelist + nextstates
         nextstates = f7(tuple(nextstates))
+        print(nextstates)
     return nextstates
 
 def main():
     ##Number of specialties d
-    d= 1
+    d= 2
     ## maximum admission per period max_S = [max in specialty 1, max in specialty 2]
-    max_S= np.array([2])
+    max_S= np.array([2,2])
 
     ## NUMBER OF RESOURCES
     num_res = 2
@@ -365,10 +426,10 @@ def main():
     max_L = np.array([5,5])
 
     ## Number of treatment patterns
-    n=2
+    n=3
     ## avg resource utilization per period
     ## avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
-    avg_ut = np.array([[2.2,0],[2.6,0]])
+    avg_ut = np.array([[2.2,2.6,0],[2.6,2.2,0]])
     ## Utilization cap
     cap_L = np.array([4,4])
 
@@ -380,15 +441,13 @@ def main():
     E = Patterns(n)
     S = Specialties(d, max_S)
 
-
-    # print(posStates((4,0),L,E,S))
-    # print(actionChecker((2,0),L,E,S))
-    # print(len(stateSpace((0,0), L, E, S)), stateSpace((0,0), L, E, S))
-
-    print(actionChecker((3,0),L,E,S))
-
-
-
+    # print(transitioner((0, 1, 1, 0, 2, 6 ), L, E, S))
+    # print(transitioner((0, 0, 0, 0, 0, 0 ), L, E, S))
+    # print(posStates((0, 0, 0, 0, 0, 0 ), L, E, S))
+    A = stateSpace((0,0,0,0,0,0),L,E,S)
+    print(len(A), A)
+    outputFile(A, "statenspatie")
+    # print(actionChecker((0, 0, 0, 0, 0, 0 ), L, E, S)[1])
     # print(posStates((1, 0, 2, 3, 3, 1 ),L ,E ,S))
     # state= (0,)*S.amount*E.amount
     # state = (0,0,0,0,0,0)
