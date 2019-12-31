@@ -9,9 +9,6 @@ import math
 
 from ast import literal_eval
 
-#We are creating a tree
-from anytree import Node, RenderTree
-
 # import time
 
 
@@ -490,6 +487,10 @@ def actionChecker(state0, L, E, S):
 
 ##Given a state, transitioner will give all possible next states by only transitioning fron one treatment pattern to another,
 ##So we do not add patients. NO ACTION USED.
+##E.g. transitioner((1,0,0,2,0,1), L, E, S), outputs:
+##[([0, 1, 0], [0, 0, 1], [1, 0, 0]), ([0, 2, 0], [0, 1, 1], [0, 0, 2], [1, 1, 0], [1, 0, 1], [2, 0, 0])]
+##list[tuple(list[],list[],list[]), tuple(list[],list[],list[],list[],list[],list[])]
+
 def transitioner(state, L, E, S):
     #n is amount of treatment patterns
     n = E.amount
@@ -646,52 +647,28 @@ def posStates(state0, L, E, S):
 
 
 
-
-
-
-
-
-
-
 ##We are also interested in what the possible states are if we are given the action, I will not go into full detail here
 ##since all the methods were already used once
+##The output will look something like this:
+##[(state_specialty_0, state_specialty_1, ... , state_specialty_n), (state_specialty_0, state_specialty_1, ... , state_specialty_n), (state_specialty_0, state_specialty_1, ... , state_specialty_n), ...]
 def posStatesGivenAction(state0, action, L, E, S):
-    possTrans = tuple(transitioner(state0, L, E, S))
+    possTrans = transitioner(state0, L, E, S)
     n = E.amount
-    A = [0] * int(S.amount)
+    A = []
     possActionDistrs = []
     for i in range(S.amount):
-        A[i] = [[action[i]-sum(p)] + p for p in partition(action[i], n-2)]
-    B = itertools.product(*A)
-    for distr in B:
-        distrib = []
-        for d in range(S.amount):
-            distrib = distrib + distr[d] + [0]
-        possActionDistrs.append(tuple(distrib))
+        A.append(tuple([[action[i]-sum(p)] + p + [0] for p in partition(action[i], n-2)]))
     possStates = []
-    for trans in possTrans:
-        nptrans = np.array(trans)
-        for act in possActionDistrs:
-            npact = np.array(act)
-            som = nptrans + npact
-            som2 = tuple(som)
-            possStates.append(som2)
-    return possStates
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    for specialty in range(S.amount):
+        B = itertools.product(possTrans[specialty], A[specialty])
+        possStates_Specialty = tuple()
+        for combination in B:
+            som = np.array(combination[0]) + np.array(combination[1])
+            som = som.tolist()
+            possStates_Specialty = possStates_Specialty + (som,)
+        possStates.append(possStates_Specialty)
+    possStates_combs = tuple([b for b in itertools.product(*possStates)])
+    return possStates_combs
 
 def stateSpace(state0, L, E, S):
     statelist = list(posStates(state0, L, E, S))
@@ -716,39 +693,30 @@ def stateSpace(state0, L, E, S):
         print(nextstates)
     return nextstates
 
-
-
-
-
-
-
-
-
-
 def costFunction(state, action, L, E, S):
-    ##We don't need to find all the states reachable with the action, since we're only looking for the worst case scenario
     allPossStates = posStatesGivenAction(state, action, L, E, S)
     ##And now for the probabilities:
     totaalsom = 0
     for nextstate in allPossStates:
         n = E.amount
         ##We need to calculate how many people use resource Lj in nextstate
-        total_avgusage_per_resource = []
         som=0
         for res_numbr in range(L.amount):
             total_avgusage=0
-            for specialty in range(len(action)):
-                for tr_pat in range(n-1):
+            for tr_pat in range(n - 1):
+                statesSum = 0
+                for specialty in range(len(action)):
                     ##avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
-                    total_avgusage += nextstate[tr_pat+(specialty*n)]*L.avgMatrix[res_numbr][tr_pat]
+                    statesSum += nextstate[specialty][tr_pat]
+                total_avgusage += statesSum*L.avgMatrix[res_numbr][tr_pat]
             Oj = L.cost[0][res_numbr]*max(0, L.cap[res_numbr]-total_avgusage)
             Bj = L.cost[1][res_numbr]*max(0, total_avgusage-L.cap[res_numbr])
             Cj = L.cost[2][res_numbr]*max(0, total_avgusage-L.max[res_numbr])
             som += Oj+Bj+Cj
         P=1
         for specialty in range(len(action)):
-             P = P*CalcProb(nextstate[n*specialty:n*(specialty+1)], state[n*specialty:n*(specialty+1)], action[specialty], specialty, E)
+             P = P*CalcProb(nextstate[specialty], state[n*specialty:n*(specialty+1)], action[specialty], specialty, E)
         totaalsom+=P*som
     return totaalsom
 
@@ -803,28 +771,31 @@ def main():
 
     #Creates state space
     # start = time.time()
-    A = stateSpace((0,0,0,0,0,0),L,E,S)
+    # A = stateSpace((0,0,0,0,0,0),L,E,S)
     # end = time.time()
     # print(end - start)
-    print(len(A))
-    outputFile(A, "statenspatie")
+    # print(len(A))
+    # outputFile(A, "statenspatie")
+
 
 
     ##Since we do not want to recalculate the state space all the time we just save it externally and call it up
-                            # statenspatie = open("statespace.txt", 'r')
-                            # statespace = []
-                            # for state in statenspatie:
-                            #     listContent = state.rstrip()
-                            #     tupel = literal_eval(listContent)
-                            #     statespace.append(tupel)
-                            # statenspatie.close()
-                            #
-                            #
-                            #
-                            # som = 0
-                            # for state in statespace:
-                            #     som += CalcProb(state, (1, 0, 0), 0 ,0, E)
-                            # print(som)
+    statenspatie = open("statespace.txt", 'r')
+    statespace = []
+    for state in statenspatie:
+        listContent = state.rstrip()
+        tupel = literal_eval(listContent)
+        statespace.append(tupel)
+    statenspatie.close()
+
+    # som = 0
+    # alreadyused = set()
+    # for state in statespace:
+    #     if state[0:3] not in alreadyused:
+    #         alreadyused.add(state[0:3])
+    #         print(state[0:3])
+    #         som += CalcProb(tuple(state[0:3]), (2, 5, 0), 0, 1, E)
+    # print(som)
 
     ##Time for action space
     # statewithactions = []
@@ -833,6 +804,6 @@ def main():
     #     statewithactions.append((state, actions))
     # outputFile(statewithactions, "actionspace")
 
-    # print(costFunction((1,2,5,0,0,0),(2,0), L, E, S))
+    print(costFunction((0,0,0,0,0,0),(1,1), L, E, S))
     # print(costFunction((0,0,0,1,2,5),(0,2),L,E,S))
 main()

@@ -1,5 +1,8 @@
-A = [1,2,3]
-B = [2,1,15]
-action = 3
-print(sum(A))
-print(sum(B[:len(B)-1])+3)
+import itertools
+
+
+A = [([0,1],[0,2],[3,0]),([9,2],[8,3])]
+
+B = [i for i in itertools.product(*A)]
+
+print(B)
