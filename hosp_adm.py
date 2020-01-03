@@ -9,7 +9,7 @@ import math
 
 from ast import literal_eval
 
-# import time
+import time
 
 
 
@@ -35,6 +35,10 @@ class Resources:
         self.cap = cap_L
         ## What's the cost for going over this cap?
         self.cost = cap_cost
+        ##given (state(specialty d), action(specialty d)) as key, then value is total average cost
+        self.costAction = dict()
+        ##This will be a dict of actual costs:
+        self.costSpace = dict()
 
     def isOverUt(self, state, E):
         ##We have to group all the treatment patterns together
@@ -64,6 +68,7 @@ class Patterns:
         self.states = set()
         self.trans_probs = trans_probs
         self.enter_probs = enter_probs
+        self.calcProbs = dict()
 
     def addTransitions(self, specialty, treatmentPattern, size, transitions):
         self.transitions[(specialty, treatmentPattern, size)] = transitions
@@ -79,6 +84,7 @@ class Specialties:
         self.actions = []
         self.actionDistributions = []
         self.__Actions(num_sp, max_spec)
+
 
     def Actions(self, amount, max):
         B=[]
@@ -232,157 +238,165 @@ def TransProbs(comptuples, specialty, E):
 ##It will obviously use the functions given above (EnterProb() and TransProbs())
 def CalcProb(state2, state1, actionnr, specialty, E):
     ##If the patients in the next state do not match the patients in each effective treatment pattern + actionnr return probability 0
+
     if sum(state2) != sum(state1[:len(state1)-1])+actionnr:
         return 0
 
     ## Else continue
     else:
+        if (tuple(state2), tuple(state1), (actionnr,)) in E.calcProbs.keys():
+            return E.calcProbs[(tuple(state2), tuple(state1), (actionnr,))]
+        else:
+            ##If state2 = (8,11,3), then B = [[0,1,2,3,4,5,6,7,8],[0,1,2,3,4,5,6,7,8,9,10,11]]
+            B=[]
 
-        ##If state2 = (8,11,3), then B = [[0,1,2,3,4,5,6,7,8],[0,1,2,3,4,5,6,7,8,9,10,11]]
-        B=[]
+            ##List of all possible action distributions given an action
+            ##E.g. if the action is 2, then C = [[2,0],[1,1],[0,2]]
+            C=[]
 
-        ##List of all possible action distributions given an action
-        ##E.g. if the action is 2, then C = [[2,0],[1,1],[0,2]]
-        C=[]
+            ##Targetlist is a list for all targets I want to reach by applying only transitions and their respective entering probability.
+            ##One target is defined as state2 - (minus) action distribution
+            ##E.g. if state2 = [2,2,2] and action = 1, then the possible action distributions are:
+            ##[1,0,0] and [0,1,0] and thus the possible targets are: [1,2,2] and [2,1,2]
+            ##So targetlist = [[[1,2,2],P([1,0,0])], [[2,1,2],P([0,1,0])]]
+            targetlist=[]
 
-        ##Targetlist is a list for all targets I want to reach by applying only transitions and their respective entering probability.
-        ##One target is defined as state2 - (minus) action distribution
-        ##E.g. if state2 = [2,2,2] and action = 1, then the possible action distributions are:
-        ##[1,0,0] and [0,1,0] and thus the possible targets are: [1,2,2] and [2,1,2]
-        ##So targetlist = [[[1,2,2],P([1,0,0])], [[2,1,2],P([0,1,0])]]
-        targetlist=[]
+            ##Make B from description I gave above
+            ##If state2 = (8,11,3), then B = [[0,1,2,3,4,5,6,7,8],[0,1,2,3,4,5,6,7,8,9,10,11]] and nothing for discharge pattern
+            for i in range(len(state2)-1):
+                B.append([*range(state2[i]+1)])
+            ##A is a cartesian product of the sets in B
+            ##E.g. B = [[1,2],[7,8]], then A = {(1,7),(1,8),(2,7),(2,8)}
+            A = itertools.product(*B)
 
-        ##Make B from description I gave above
-        ##If state2 = (8,11,3), then B = [[0,1,2,3,4,5,6,7,8],[0,1,2,3,4,5,6,7,8,9,10,11]] and nothing for discharge pattern
-        for i in range(len(state2)-1):
-            B.append([*range(state2[i]+1)])
-        ##A is a cartesian product of the sets in B
-        ##E.g. B = [[1,2],[7,8]], then A = {(1,7),(1,8),(2,7),(2,8)}
-        A = itertools.product(*B)
+            ##this creates the list of action distributions C of above
+            for action in A:
+                ##We add the discharge pattern which is 0
+                action = list(action)+[0]
+                ##If the sum of the amount of patients equal the action then add the action distribution to C
+                if sum(action)== actionnr:
+                    C.append(action)
 
-        ##this creates the list of action distributions C of above
-        for action in A:
-            ##We add the discharge pattern which is 0
-            action = list(action)+[0]
-            ##If the sum of the amount of patients equal the action then add the action distribution to C
-            if sum(action)== actionnr:
-                C.append(action)
+            ##Note that we could have created C by means of the partition() function above, but then we would have to trim
+            ##C by taking out all the action distributions where there are too many people being added.
 
-        ##Note that we could have created C by means of the partition() function above, but then we would have to trim
-        ##C by taking out all the action distributions where there are too many people being added.
-
-        ##Let us now begin to
-        for action in C:
-            ##Target is the target we want to hit by doing only transitions
-            target = np.array(state2)-np.array(action)
-            ##Now we add the target and its action probability to targetlist
-            targetlist.append([target.tolist(),EnterProb(action, specialty, E)])
-
-
-        ##Above we got all the probabilities you could obtain by adding patients in the next period (entering prob).
-        ##Now we calculate the probabilities you can get by moving patients around.
-        transition_prob_sums = []
-        ##Now we want to work for each target alone
-        for targ in targetlist:
-            ##Create a list for transitions
-            trans = []
-            ##Create a list for the sums of transitions
-            transsums = []
+            ##Let us now begin to
+            for action in C:
+                ##Target is the target we want to hit by doing only transitions
+                target = np.array(state2)-np.array(action)
+                ##Now we add the target and its action probability to targetlist
+                targetlist.append([target.tolist(),EnterProb(action, specialty, E)])
 
 
-            ##Let us iterate over the elements in target, except for the last element since that is the discharge
-            for j in range(len(targ[0])-1):
-                ##list of transitions created by going over the partition created by varying component j
-                lst3=[]
-                ## To partition sumlist in a component for every j, we must create a new list. sumlist = [[...], [...], ..., [...]]
-                for i in range(targ[0][j]+1):
-                    ##Since i stands for how many patients we keep in a treatment pattern we need to calculate how many we have to distribute
-                    n = state1[j]-i
-                    d = len(state1)-1
-
-                    ##This will partition the number n in d parts
-                    ##E.g. n= 4, d=3, then [[n - sum(p)] + p for p in partition(n, d - 1)] gives:
-                    ##[4,0,0],[3,1,0],[3,0,1],[2,2,0],[2,1,1],[2,0,2],[1,3,0],[1,2,1],[1,1,2],[1,0,3],[0,4,0],[0,3,1],
-                    ##[0,2,2],[0,1,3],[0,0,4].
-                    lst = [[n - sum(p)] + p for p in partition(n, d - 1)]
-                    ##What we have done up until this point is, given a target distribution and initial state: E.g. Targ = [2,3,4,5] and InitState = [10,4,0,1]
-                    ##We have taken a single non-discharge component j in Targ and let i be iterated in the range of Targ[j]
-                    ##So, take j=1, then Targ[j]=3 and thus i is iterated in the range [0,1,2,3].
-                    ##Next, we took n = InitState[j]-i and d the number of patterns-1, ! THIS IS NOT BECAUSE OF THE DISCHARGE PATTERN, BUT RATHER BECAUSE WE ARE NOT USING COMPONENT j!
-                    ##So in our example, let us say we are in the 3rd iteration, then i = 2 and thus
-                    ##n = 4-2 and d = 3. (I realise that recalculating the same number is inefficient/sloppy, but I do not
-                    ##think it is very expensive or time consuming.) Now we have created lst, which in our case is:
-                    ##lst = [[2,0,0],[1,1,0],[1,0,1],[0,2,0],[0,1,1],[0,0,2]]
-                    ##What will we do with lst? Well essentially we have distributed n people over the other treatment patterns,
-                    ##While we kept i people in treatment pattern j, therefore we want to add component j in each list in lst.
-                    ##lst2 will therefore be:
-                    ##lst2 = [[2,2,0,0],[1,2,1,0],[1,2,0,1],[0,2,2,0],[0,2,1,1],[0,2,0,2]]
-                    lst2=[]
-                    for lijst in lst:
-                        lijst = lijst[0:j] + [i] + lijst[j:]
-                        lst2.append(lijst)
-
-                    ##lst3 is a superlist of lst2 for all components. this means that it has all of the elements of lst2 for all components i.
-                    ##We need this list so we can can make the following cartesian product:
-                    ##[transitions by varying component 0]x[trans component 1]x...x[trans component E.amount-1]
-                    ##This is equivalent with
-                    ##[lst3, j=0]x[lst3, j=1]x...x[lst3, j=len(targ[0])-1]
-                    lst3 = lst3 + [element for element in lst2]
-                ##trans = [[lst3, j=0],[lst3, j=1],...,[lst3, j=len(targ[0])-1]]
-                trans.append(lst3)
-            ##transprods is exactly the cartesian product set I wanted, its class is not accessible by the usual operation
-            ##transprods[k], but you can iterate over transprods like we do in our for-loop
-            transprods = itertools.product(*trans)
-            for prod in transprods:
-                ##This is where the inefficiency of CalcProb() comes in. I am manually checking if the sum of the
-                ##distributions equal the sum of the people in the first state (that are not in the discharge state).
-                ##For example: take my above Targ = [2,3,4,5] and InitState [10,4,0,1].
-                ##Then a prod in transprods looks like: ([0,1,5,2],[0,2,0,0],[0,0,0,0]), what I want is that
-                ##[0,1,5,2]+[0,2,0,0]+[0,0,0,0] equals Targ = [2,3,4,5], but in this case it does not, because
-                ##[0,1,5,2]+[0,2,0,0]+[0,0,0,0] = [0,3,5,2] != [2,3,4,5]
-
-                #som in our example is [0,3,5,2]
-                som = sum([np.array(list(prod)[u]) for u in range(len(state2)-1)])
-
-                #[0,3,5,2] != [2,3,4,5] and therefore, pass.
-                if som.tolist() == targ[0]:
-                    #If it accepts, then add the probability we were able to calculate through transprobs.
-                    transsums.append([prod, TransProbs(prod, specialty, E)])
-            ##transsums is the list of all possible combinations of transitions ! NOT POSSIBLE ACTION DISTRIBUTIONS !
-            ##with their respective transition probability
+            ##Above we got all the probabilities you could obtain by adding patients in the next period (entering prob).
+            ##Now we calculate the probabilities you can get by moving patients around.
+            transition_prob_sums = []
+            ##Now we want to work for each target alone
+            for targ in targetlist:
+                ##Create a list for transitions
+                trans = []
+                ##Create a list for the sums of transitions
+                transsums = []
 
 
-            ##([1, 3, 4, 2], [1, 0, 0, 3], [0, 0, 0, 0]) is a prod where the if-statement is TRUE, therefore
-            ##transsums is definitely not empty.
+                ##Let us iterate over the elements in target, except for the last element since that is the discharge
+                for j in range(len(targ[0])-1):
+                    ##list of transitions created by going over the partition created by varying component j
+                    lst3=[]
+                    ## To partition sumlist in a component for every j, we must create a new list. sumlist = [[...], [...], ..., [...]]
+                    for i in range(targ[0][j]+1):
+                        ##Since i stands for how many patients we keep in a treatment pattern we need to calculate how many we have to distribute
+                        n = state1[j]-i
+                        d = len(state1)-1
+
+                        ##This will partition the number n in d parts
+                        ##E.g. n= 4, d=3, then [[n - sum(p)] + p for p in partition(n, d - 1)] gives:
+                        ##[4,0,0],[3,1,0],[3,0,1],[2,2,0],[2,1,1],[2,0,2],[1,3,0],[1,2,1],[1,1,2],[1,0,3],[0,4,0],[0,3,1],
+                        ##[0,2,2],[0,1,3],[0,0,4].
+                        lst = [[n - sum(p)] + p for p in partition(n, d - 1)]
+                        ##What we have done up until this point is, given a target distribution and initial state: E.g. Targ = [2,3,4,5] and InitState = [10,4,0,1]
+                        ##We have taken a single non-discharge component j in Targ and let i be iterated in the range of Targ[j]
+                        ##So, take j=1, then Targ[j]=3 and thus i is iterated in the range [0,1,2,3].
+                        ##Next, we took n = InitState[j]-i and d the number of patterns-1, ! THIS IS NOT BECAUSE OF THE DISCHARGE PATTERN, BUT RATHER BECAUSE WE ARE NOT USING COMPONENT j!
+                        ##So in our example, let us say we are in the 3rd iteration, then i = 2 and thus
+                        ##n = 4-2 and d = 3. (I realise that recalculating the same number is inefficient/sloppy, but I do not
+                        ##think it is very expensive or time consuming.) Now we have created lst, which in our case is:
+                        ##lst = [[2,0,0],[1,1,0],[1,0,1],[0,2,0],[0,1,1],[0,0,2]]
+                        ##What will we do with lst? Well essentially we have distributed n people over the other treatment patterns,
+                        ##While we kept i people in treatment pattern j, therefore we want to add component j in each list in lst.
+                        ##lst2 will therefore be:
+                        ##lst2 = [[2,2,0,0],[1,2,1,0],[1,2,0,1],[0,2,2,0],[0,2,1,1],[0,2,0,2]]
+                        lst2=[]
+                        for lijst in lst:
+                            lijst = lijst[0:j] + [i] + lijst[j:]
+                            lst2.append(lijst)
+
+                        ##lst3 is a superlist of lst2 for all components. this means that it has all of the elements of lst2 for all components i.
+                        ##We need this list so we can can make the following cartesian product:
+                        ##[transitions by varying component 0]x[trans component 1]x...x[trans component E.amount-1]
+                        ##This is equivalent with
+                        ##[lst3, j=0]x[lst3, j=1]x...x[lst3, j=len(targ[0])-1]
+                        lst3 = lst3 + [element for element in lst2]
+                    ##trans = [[lst3, j=0],[lst3, j=1],...,[lst3, j=len(targ[0])-1]]
+                    trans.append(lst3)
+                ##transprods is exactly the cartesian product set I wanted, its class is not accessible by the usual operation
+                ##transprods[k], but you can iterate over transprods like we do in our for-loop
+                transprods = itertools.product(*trans)
+                for prod in transprods:
+                    ##This is where the inefficiency of CalcProb() comes in. I am manually checking if the sum of the
+                    ##distributions equal the sum of the people in the first state (that are not in the discharge state).
+                    ##For example: take my above Targ = [2,3,4,5] and InitState [10,4,0,1].
+                    ##Then a prod in transprods looks like: ([0,1,5,2],[0,2,0,0],[0,0,0,0]), what I want is that
+                    ##[0,1,5,2]+[0,2,0,0]+[0,0,0,0] equals Targ = [2,3,4,5], but in this case it does not, because
+                    ##[0,1,5,2]+[0,2,0,0]+[0,0,0,0] = [0,3,5,2] != [2,3,4,5]
+
+                    #som in our example is [0,3,5,2]
+                    som = sum([np.array(list(prod)[u]) for u in range(len(state2)-1)])
+
+                    #[0,3,5,2] != [2,3,4,5] and therefore, pass.
+                    if som.tolist() == targ[0]:
+                        #If it accepts, then add the probability we were able to calculate through transprobs.
+                        transsums.append([prod, TransProbs(prod, specialty, E)])
+                ##transsums is the list of all possible combinations of transitions ! NOT POSSIBLE ACTION DISTRIBUTIONS !
+                ##with their respective transition probability
 
 
-            #Initial probability is 0
-            kans=0
-
-            #For v in the range of transsums
-            for v in range(len(transsums)):
-                ##P(transsums[v][0])=transsums[v][1], now add it to the total probability
-                kans = kans + transsums[v][1]
-
-            ##Now transition_prob_sums is the total probability to go from state1 to Targ
-            transition_prob_sums.append(kans)
-            #Iterate until the end of targetlist
-
-        #Finalsum will be our final probability and we start it at 0
-        finalProb = 0
-        for i in range(len(transition_prob_sums)):
-            ##distrProb is the probability of going from state2 to targ times the probability of going from Targ to state1.
-            ##essentially, the probability given a distribution of the action.
-            distrProb = transition_prob_sums[i]*targetlist[i][1]
-            ##Since we add up all the above probabilities, finalsum will be the total probability of reaching a state given an action
-            finalProb = finalProb+distrProb
-        return finalProb
+                ##([1, 3, 4, 2], [1, 0, 0, 3], [0, 0, 0, 0]) is a prod where the if-statement is TRUE, therefore
+                ##transsums is definitely not empty.
 
 
+                #Initial probability is 0
+                kans=0
+
+                #For v in the range of transsums
+                for v in range(len(transsums)):
+                    ##P(transsums[v][0])=transsums[v][1], now add it to the total probability
+                    kans = kans + transsums[v][1]
+
+                ##Now transition_prob_sums is the total probability to go from state1 to Targ
+                transition_prob_sums.append(kans)
+                #Iterate until the end of targetlist
+
+            #Finalsum will be our final probability and we start it at 0
+            finalProb = 0
+            for i in range(len(transition_prob_sums)):
+                ##distrProb is the probability of going from state2 to targ times the probability of going from Targ to state1.
+                ##essentially, the probability given a distribution of the action.
+                distrProb = transition_prob_sums[i]*targetlist[i][1]
+                ##Since we add up all the above probabilities, finalsum will be the total probability of reaching a state given an action
+                finalProb = finalProb+distrProb
+            E.calcProbs[(tuple(state2), tuple(state1), (actionnr,))] = finalProb
+
+            return E.calcProbs[(tuple(state2), tuple(state1), (actionnr,))]
 
 
-
-
+def CalcTotalProb(state, nextstate, action, E):
+    P=1
+    n = E.amount
+    for specialty in range(len(action)):
+         P = P*CalcProb(nextstate[n*specialty:n*(specialty+1)], state[n*specialty:n*(specialty+1)], action[specialty],
+                        specialty, E)
+    return P
 
 
 
@@ -677,7 +691,7 @@ def stateSpace(state0, L, E, S):
         nextstates = nextstates + list(posStates(state, L, E, S))
     nextstates = statelist + nextstates
     nextstates = f7(tuple(nextstates))
-    print(nextstates)
+    print("Current states are :\n",nextstates)
 
     while len(nextstates) > len(statelist):
         length = len(statelist)
@@ -690,8 +704,38 @@ def stateSpace(state0, L, E, S):
             nextstates = nextstates + list(posStates(uniquestate, L, E, S))
         nextstates = statelist + nextstates
         nextstates = f7(tuple(nextstates))
-        print(nextstates)
-    return nextstates
+        print("Current states are :\n",nextstates)
+    E.states = set(nextstates)
+    return E.states
+
+# def costFunction(state, action, L, E, S):
+#     allPossStates = posStatesGivenAction(state, action, L, E, S)
+#     ##And now for the probabilities:
+#     totaalsom = 0
+#     for nextstate in allPossStates:
+#         n = E.amount
+#         ##We need to calculate how many people use resource Lj in nextstate
+#         som=0
+#         for res_numbr in range(L.amount):
+#             total_avgusage=0
+#             for tr_pat in range(n - 1):
+#                 statesSum = 0
+#                 for specialty in range(len(action)):
+#                     ##avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
+#                     ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
+#                     statesSum += nextstate[specialty][tr_pat]
+#                 total_avgusage += statesSum*L.avgMatrix[res_numbr][tr_pat]
+#             Oj = L.cost[0][res_numbr]*max(0, L.cap[res_numbr]-total_avgusage)
+#             Bj = L.cost[1][res_numbr]*max(0, total_avgusage-L.cap[res_numbr])
+#             Cj = L.cost[2][res_numbr]*max(0, total_avgusage-L.max[res_numbr])
+#             som += Oj+Bj+Cj
+#         P=1
+#         for specialty in range(len(action)):
+#              P = P*CalcProb(nextstate[specialty], state[n*specialty:n*(specialty+1)], action[specialty], specialty, E)
+#         totaalsom+=P*som
+#     return totaalsom
+
+######
 
 def costFunction(state, action, L, E, S):
     allPossStates = posStatesGivenAction(state, action, L, E, S)
@@ -701,29 +745,151 @@ def costFunction(state, action, L, E, S):
         n = E.amount
         ##We need to calculate how many people use resource Lj in nextstate
         som=0
+        # start_time = time.time()
         for res_numbr in range(L.amount):
             total_avgusage=0
-            for tr_pat in range(n - 1):
-                statesSum = 0
-                for specialty in range(len(action)):
-                    ##avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
-                    ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
-                    statesSum += nextstate[specialty][tr_pat]
-                total_avgusage += statesSum*L.avgMatrix[res_numbr][tr_pat]
+            for specialty in range(len(action)):
+                if (tuple(nextstate[specialty]), (action[specialty],)) in L.costAction.keys():
+                    total_avgusage = L.costAction[(tuple(nextstate[specialty]),(action[specialty],))]
+                else:
+                    for tr_pat in range(n - 1):
+                        ##avg_ut = [[avg util. of res. 1 by E_1,avg ut of res. 1 by E_2], [avg ut of res. 2 by E_1,avg ut of res. 2 by E_2]]
+                        ##avg_ut = np.array([[2.2,2.6],[2.6,2.2]])
+                        total_avgusage += nextstate[specialty][tr_pat] * L.avgMatrix[res_numbr][tr_pat]
+                    L.costAction[(tuple(nextstate[specialty]), (action[specialty],))] = total_avgusage
+
             Oj = L.cost[0][res_numbr]*max(0, L.cap[res_numbr]-total_avgusage)
             Bj = L.cost[1][res_numbr]*max(0, total_avgusage-L.cap[res_numbr])
             Cj = L.cost[2][res_numbr]*max(0, total_avgusage-L.max[res_numbr])
             som += Oj+Bj+Cj
         P=1
+        # elapsed_time = time.time() - start_time
+        # print("elapsed time for one", elapsed_time)
+        # start_time = time.time()
         for specialty in range(len(action)):
+
              P = P*CalcProb(nextstate[specialty], state[n*specialty:n*(specialty+1)], action[specialty], specialty, E)
+        # elapsed_time = time.time()-start_time
+        # print("elapsed time for two", elapsed_time)
         totaalsom+=P*som
+
     return totaalsom
 
+######
+
+def costSpace(L,E,S):
+    costspace = list()
+    for x in E.states:
+        if not L.isOverUt(x, E):
+
+            actions = S.actions
+            for a in actions:
+                if (tuple(x), tuple(a)) not in L.costSpace.keys():
+                    R = costFunction(x, a, L, E, S)  #
+                    L.costSpace[(tuple(x), tuple(a))] = R
+                    costspace.append((x, a, R))
+        else:
+            L.costSpace[(x, (0,)*S.amount, 0)] = 0
+            costspace.append((x, (0,)*S.amount, 0))
+    return costspace
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+def nextV(previousV, L, E, S):
+    nextVs = dict()
+    for x in E.states:
+        if not L.isOverUt(x, E):
+            actions = S.actions
+            min_R = float("inf")
+            for a in actions:
+                if (tuple(x), tuple(a)) in L.costSpace.keys():
+                    R = L.costSpace[(tuple(x), tuple(a))]
+                else:                                                   #This was a check to see if we still calculated
+                    print("no")                                         #we do not, but it doesn't speed up the VIA at all
+                    R = costFunction(x, a, L, E, S)                     #
+                    L.costSpace[(tuple(x), tuple(a))] = R                #
+                som = 0
+                for y in E.states:
+                    for specialty in range(S.amount):
+                        som += CalcProb(y[E.amount*specialty: E.amount*(specialty+1)],
+                                        x[E.amount*specialty: E.amount*(specialty+1)],
+                                        a[specialty],specialty, E)*previousV[y]
+                if R+som <= min_R:
+                    min_R = R
+            nextVs[x]=min_R
+    return nextVs
+def VIA(e, L, E, S):
+    print(1)
+    optimalPolicy = dict()
+    previous_V = dict()
+    for x in E.states:
+        if not L.isOverUt(x, E):
+            actions = S.actions
+            min_R = float("inf")
+            for a in actions:
+                if (tuple(x), tuple(a)) in L.costSpace.keys():
+                    R = L.costSpace[(tuple(x), tuple(a))]
+                else:
+                    R = costFunction(x, a, L, E, S)                     # Takes way too long, due to CalcProb
+                    L.costSpace[(tuple(x), tuple(a))] = R
+                if R <= min_R:
+                    min_R = R
+            V0 = min_R/2
+            previous_V[x] = V0
+        else:
+            previous_V[x] = 0
+            optimalPolicy[x] = tuple((0,)*S.amount)
+    n = 0
+    print(3)
+    max_n = -10000
+    min_n = 10000
+    while (max_n - min_n) / min_n > e or n==0:
+        n += 1
+        next_V = nextV(previous_V, L, E, S)                            # Takes way too long, due to CalcProb
+        for v in previous_V.keys():
+            if next_V[v] - previous_V[v] < min_n:
+                min_n = next_V[v] - previous_V[v]
+            if next_V[v] - previous_V[v] > max_n:
+                max_n = next_V[v] - previous_V[v]
+        previous_V = next_V
+        print(4)
+    for x in E.states:
+        actie = None
+        if not L.isOverUt(x, E):
+            actions = S.actions
+            max_a = float("-inf")
+            for a in actions:
+                print(5)
+                if (tuple(x), tuple(a)) in L.costSpace.keys():
+                    R = L.costSpace[(tuple(x), tuple(a))]
+                else:
+                    R = costFunction(x, a, L, E, S)  # Takes way too long. No time to optimize.
+                    L.costSpace[(tuple(x), tuple(a))] = R
+                som = 0
+                for y in E.states:
+                    for specialty in range(S.amount):
+                        som += CalcProb(y[E.amount*specialty: E.amount*(specialty+1)],
+                                        x[E.amount*specialty: E.amount*(specialty+1)],
+                                        a[specialty],specialty, E)*previous_V[y]
+                if R+som > max_a:
+                    actie = a
+        optimalPolicy[x] = actie
+
+    return optimalPolicy
 
 
 
@@ -774,19 +940,19 @@ def main():
     # A = stateSpace((0,0,0,0,0,0),L,E,S)
     # end = time.time()
     # print(end - start)
-    # print(len(A))
+    # print("We have",len(A), "states:\n", A)
     # outputFile(A, "statenspatie")
 
 
 
     ##Since we do not want to recalculate the state space all the time we just save it externally and call it up
-    statenspatie = open("statespace.txt", 'r')
-    statespace = []
-    for state in statenspatie:
-        listContent = state.rstrip()
-        tupel = literal_eval(listContent)
-        statespace.append(tupel)
-    statenspatie.close()
+    # statenspatie = open("statespace.txt", 'r')
+    # statespace = []
+    # for state in statenspatie:
+    #     listContent = state.rstrip()
+    #     tupel = literal_eval(listContent)
+    #     statespace.append(tupel)
+    # statenspatie.close()
 
     # som = 0
     # alreadyused = set()
@@ -804,6 +970,90 @@ def main():
     #     statewithactions.append((state, actions))
     # outputFile(statewithactions, "actionspace")
 
-    print(costFunction((0,0,0,0,0,0),(1,1), L, E, S))
+    # print(costFunction((0,0,0,0,0,0),(1,1), L, E, S))
     # print(costFunction((0,0,0,1,2,5),(0,2),L,E,S))
+    # print(VIA(0.01, L, E, S))
+
+    while True:
+        D = int(input("What do you want to do? The choices are:\n 1. Calculate state space and see the time difference. \n "
+                      "2. List all the actions and see the time difference. \n 3. Calculate all the costs given a state and"
+                      " action and see the time difference (LONG) \n 4. Calculate probability to transfer states\n Choice: "))
+        A=-1
+        B = -1
+        C = -1
+        F=-1
+
+        if D ==1:
+            A=1
+        if D == 2:
+            B=1
+        if D == 3:
+            C = 1
+        if D == 4:
+            F=1
+
+        if A == 1:
+            start = time.time()
+            statespace = stateSpace((0,0,0,0,0,0),L,E,S)
+            end = time.time()
+            print("We have", len(statespace), "states:\n", statespace)
+            print("Time it takes is ", end - start, " seconds.")
+            outputFile(statespace, "statespace")
+            print("You can find this in statespace.txt")
+        else:
+            statenspatie = open("statespace.txt", 'r')
+            for state in statenspatie:
+                listContent = state.rstrip()
+                tupel = literal_eval(listContent)
+                E.states.add(tupel)
+            statenspatie.close()
+
+        statewithactions = []
+        start = time.time()
+        for state in E.states:
+            actions = actionChecker(state, L, E, S)[0]
+            statewithactions.append((state, actions))
+        end = time.time()
+
+        if B == 1:
+            print("These are all the states with their respective actions:\n ",statewithactions)
+            print("Time it takes is ", end - start, " seconds.")
+            print("You can find this in actionspace.txt")
+        outputFile(statewithactions, "actionspace")
+
+        if C == 1:
+            start = time.time()
+            costspace = costSpace(L,E,S)
+            end = time.time()
+            print("Time it takes is ", end-start, " seconds.")
+            outputFile(costspace, "costspace")
+            print("You can find this in costspace.txt")
+        else:
+            costspatie = open("costspace.txt", 'r')
+            # costspace = []
+            for state in costspatie:
+                listContent = state.rstrip()
+                tupel = literal_eval(listContent)
+                L.costSpace[(tupel[0], tuple(tupel[1]))] = tupel[2]
+                # costspace.append(tupel)
+            costspatie.close()
+
+        if F == 1:
+            print("These are the example inputs: Starting state (0,1,0,1,2,0), Ending state (3,1,0,1,2,0), Action (3,0)")
+            state1 = input("Starting state? \n")
+            statestring = state1.rstrip()
+            state1 = literal_eval(statestring)
+
+            state2 = input("Ending State?  \n")
+            statestring = state2.rstrip()
+            state2 = literal_eval(statestring)
+
+            action = input("Action? \n")
+            statestring = action.rstrip()
+            action = literal_eval(statestring)
+
+            print("Probability: ", CalcTotalProb(state1, state2, action, E))
+
+        print("\n \n ################################################\n \n")
+
 main()

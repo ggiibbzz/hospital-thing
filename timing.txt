@@ -1,0 +1,8 @@
+Calculating costs
+132.43776726722717  seconds
+
+Calculating states
+5.042144536972046  seconds
+
+Calculating states
+0.2665889263153076  seconds
